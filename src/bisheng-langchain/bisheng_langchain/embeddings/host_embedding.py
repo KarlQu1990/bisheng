@@ -7,8 +7,7 @@ import requests
 from langchain.embeddings.base import Embeddings
 from langchain.utils import get_from_dict_or_env
 from langchain_core.pydantic_v1 import BaseModel, Field, root_validator
-from tenacity import (before_sleep_log, retry, retry_if_exception_type, stop_after_attempt,
-                      wait_exponential)
+from tenacity import before_sleep_log, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -39,15 +38,14 @@ def embed_with_retry(embeddings: HostEmbeddings, **kwargs: Any) -> Any:
 
 
 class HostEmbeddings(BaseModel, Embeddings):
-    """host embedding models.
-    """
+    """host embedding models."""
 
     client: Optional[Any]  #: :meta private:
     """Model name to use."""
-    model: str = 'embedding-host'
+    model: str = "embedding-host"
     host_base_url: str = None
 
-    deployment: Optional[str] = 'default'
+    deployment: Optional[str] = "default"
 
     embedding_ctx_length: Optional[int] = 6144
     """The maximum number of tokens to embed at once."""
@@ -67,34 +65,34 @@ class HostEmbeddings(BaseModel, Embeddings):
     @root_validator()
     def validate_environment(cls, values: Dict) -> Dict:
         """Validate that api key and python package exists in environment."""
-        values['host_base_url'] = get_from_dict_or_env(values, 'host_base_url', 'HostBaseUrl')
-        model = values['model']
+        values["host_base_url"] = get_from_dict_or_env(values, "host_base_url", "HostBaseUrl")
+        model = values["model"]
         try:
-            url = values['host_base_url']
-            values['url_ep'] = f'{url}/{model}/infer'
+            url = values["host_base_url"]
+            values["url_ep"] = f"{url}/{model}/infer"
         except Exception:
-            raise Exception(f'Failed to set url ep failed for model {model}')
+            raise Exception(f"Failed to set url ep failed for model {model}")
 
         try:
-            values['client'] = requests.post
+            values["client"] = requests.post
         except AttributeError:
-            raise ValueError('Try upgrading it with `pip install --upgrade requests`.')
+            raise ValueError("Try upgrading it with `pip install --upgrade requests`.")
         return values
 
     @property
     def _invocation_params(self) -> Dict:
         api_args = {
-            'model': self.model,
-            'request_timeout': self.request_timeout,
+            "model": self.model,
+            "request_timeout": self.request_timeout,
             **self.model_kwargs,
         }
         return api_args
 
     def embed(self, texts: List[str], **kwargs) -> List[List[float]]:
-        emb_type = kwargs.get('type', 'raw')
-        inp = {'texts': texts, 'model': self.model, 'type': emb_type}
+        emb_type = kwargs.get("type", "raw")
+        inp = {"texts": texts, "model": self.model, "type": emb_type}
         if self.verbose:
-            print('payload', inp)
+            print("payload", inp)
 
         max_text_to_split = 200
         outp = None
@@ -103,78 +101,88 @@ class HostEmbeddings(BaseModel, Embeddings):
         len_text = len(texts)
         while start_index < len_text:
             inp_local = {
-                'texts': texts[start_index:min(start_index + max_text_to_split, len_text)],
-                'model': self.model,
-                'type': emb_type
+                "texts": texts[start_index : min(start_index + max_text_to_split, len_text)],
+                "model": self.model,
+                "type": emb_type,
             }
             try:
-                outp_single = self.client(url=self.url_ep,
-                                          json=inp_local,
-                                          timeout=self.request_timeout).json()
+                outp_single = self.client(url=self.url_ep, json=inp_local, timeout=self.request_timeout).json()
                 if outp is None:
                     outp = outp_single
                 else:
-                    outp['embeddings'] += outp_single['embeddings']
+                    outp["embeddings"] += outp_single["embeddings"]
             except requests.exceptions.Timeout:
-                raise Exception(f'timeout in host embedding infer, url=[{self.url_ep}]')
+                raise Exception(f"timeout in host embedding infer, url=[{self.url_ep}]")
             except Exception as e:
-                raise Exception(f'exception in host embedding infer: [{e}]')
+                raise Exception(f"exception in host embedding infer: [{e}]")
 
-            if outp_single['status_code'] != 200:
+            if outp_single["status_code"] != 200:
                 raise ValueError(f"API returned an error: {outp['status_message']}")
             start_index += max_text_to_split
-        return outp['embeddings']
+        return outp["embeddings"]
 
-    def embed_documents(self,
-                        texts: List[str],
-                        chunk_size: Optional[int] = 0) -> List[List[float]]:
+    def embed_documents(self, texts: List[str], chunk_size: Optional[int] = 0) -> List[List[float]]:
         if not texts:
             return []
         """Embed search docs."""
         texts = [text for text in texts if text]
-        embeddings = embed_with_retry(self, texts=texts, type='doc')
+        embeddings = embed_with_retry(self, texts=texts, type="doc")
         return embeddings
 
     def embed_query(self, text: str) -> List[float]:
-        embeddings = embed_with_retry(self, texts=[text], type='query')
+        embeddings = embed_with_retry(self, texts=[text], type="query")
         return embeddings[0]
 
 
 class ME5Embedding(HostEmbeddings):
-    model: str = 'multi-e5'
+    model: str = "multi-e5"
     embedding_ctx_length: int = 512
 
 
 class BGEZhEmbedding(HostEmbeddings):
-    model: str = 'bge-zh'
+    model: str = "bge-zh"
     embedding_ctx_length: int = 512
 
 
 class GTEEmbedding(HostEmbeddings):
-    model: str = 'gte'
+    model: str = "gte"
     embedding_ctx_length: int = 512
 
 
 class JINAEmbedding(HostEmbeddings):
-    model: str = 'jina'
+    model: str = "jina"
     embedding_ctx_length: int = 512
 
 
 class CustomHostEmbedding(HostEmbeddings):
-    model: str = Field('custom-embedding', alias='model')
+    model: str = Field("custom-embedding", alias="model")
     embedding_ctx_length: int = 512
 
     @root_validator()
     def validate_environment(cls, values: Dict) -> Dict:
         """Validate that api key and python package exists in environment."""
-        values['host_base_url'] = get_from_dict_or_env(values, 'host_base_url', 'HostBaseUrl')
+        values["host_base_url"] = get_from_dict_or_env(values, "host_base_url", "HostBaseUrl")
         try:
-            values['url_ep'] = values['host_base_url']
+            values["url_ep"] = values["host_base_url"]
         except Exception:
-            raise Exception('Failed to set url ep for custom host embedding')
+            raise Exception("Failed to set url ep for custom host embedding")
 
         try:
-            values['client'] = requests.post
+            values["client"] = requests.post
         except AttributeError:
-            raise ValueError('Try upgrading it with `pip install --upgrade requests`.')
+            raise ValueError("Try upgrading it with `pip install --upgrade requests`.")
         return values
+
+
+class BGEM3Embedding(HostEmbeddings):
+    model: str = "bge-m3"
+    embedding_ctx_length: int = 512
+
+    def embed(self, texts: List[str], **kwargs) -> Dict[str, List[List[float]]]:
+        return super().embed(texts, **kwargs)
+
+    def embed_documents(self, texts: List[str], chunk_size: Optional[int] = 0) -> List[Dict[str, List[List[float]]]]:
+        return super().embed_documents(texts, chunk_size=chunk_size)
+
+    def embed_query(self, text: str) -> Dict[str, List[List[float]]]:
+        return super().embed_query(text)

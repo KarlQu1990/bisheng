@@ -136,6 +136,8 @@ documentloaders:
     documentation: "https://python.langchain.com/docs/modules/data_connection/document_loaders/integrations/git"
   PDFWithSemanticLoader:
     documentation: "https://python.langchain.com/docs/modules/data_connection/document_loaders/integrations/git"
+  CustomPDFLoader:
+    documentation: ""
 embeddings:
   OpenAIProxyEmbedding:
     documentation: ""

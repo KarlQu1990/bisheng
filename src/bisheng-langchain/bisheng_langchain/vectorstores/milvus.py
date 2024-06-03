@@ -1,24 +1,27 @@
 """Wrapper around the Milvus vector database."""
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Iterable, List, Optional, Tuple, Union, Dict
 from uuid import uuid4
 
 import numpy as np
+from scipy.sparse import csr_array, vstack
 from langchain.docstore.document import Document
 from langchain.embeddings.base import Embeddings
 from langchain.vectorstores.utils import maximal_marginal_relevance
 from langchain_community.vectorstores.milvus import Milvus as MilvusLangchain
 
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MILVUS_CONNECTION = {
-    'host': 'localhost',
-    'port': '19530',
-    'user': '',
-    'password': '',
-    'secure': False,
+    "host": "localhost",
+    "port": "19530",
+    "user": "",
+    "password": "",
+    "secure": False,
 }
 
 
@@ -97,87 +100,41 @@ class Milvus(MilvusLangchain):
         ValueError: If the pymilvus python package is not installed.
     """
 
-    def __init__(self,
-                 embedding_function: Embeddings,
-                 collection_name: str = 'LangChainCollection',
-                 connection_args: Optional[dict[str, Any]] = None,
-                 consistency_level: str = 'Session',
-                 index_params: Optional[dict] = None,
-                 search_params: Optional[dict] = None,
-                 drop_old: Optional[bool] = False,
-                 *,
-                 primary_field: str = 'pk',
-                 text_field: str = 'text',
-                 vector_field: str = 'vector',
-                 partition_field: str = 'knowledge_id'):
+    def __init__(
+        self,
+        embedding_function: Embeddings,
+        collection_name: str = "LangChainCollection",
+        connection_args: Optional[dict[str, Any]] = None,
+        consistency_level: str = "Session",
+        index_params: Optional[dict] = None,
+        search_params: Optional[dict] = None,
+        drop_old: Optional[bool] = False,
+        *,
+        primary_field: str = "pk",
+        text_field: str = "text",
+        vector_field: str = "vector",
+        partition_field: str = "knowledge_id",
+    ):
         """Initialize the Milvus vector store."""
         try:
             from pymilvus import Collection, utility
         except ImportError:
-            raise ValueError('Could not import pymilvus python package. '
-                             'Please install it with `pip install pymilvus`.')
+            raise ValueError(
+                "Could not import pymilvus python package. " "Please install it with `pip install pymilvus`."
+            )
 
         # Default search params when one is not provided.
         self.default_search_params = {
-            'IVF_FLAT': {
-                'metric_type': 'L2',
-                'params': {
-                    'nprobe': 10
-                }
-            },
-            'IVF_SQ8': {
-                'metric_type': 'L2',
-                'params': {
-                    'nprobe': 10
-                }
-            },
-            'IVF_PQ': {
-                'metric_type': 'L2',
-                'params': {
-                    'nprobe': 10
-                }
-            },
-            'HNSW': {
-                'metric_type': 'L2',
-                'params': {
-                    'ef': 100
-                }
-            },
-            'RHNSW_FLAT': {
-                'metric_type': 'L2',
-                'params': {
-                    'ef': 10
-                }
-            },
-            'RHNSW_SQ': {
-                'metric_type': 'L2',
-                'params': {
-                    'ef': 10
-                }
-            },
-            'RHNSW_PQ': {
-                'metric_type': 'L2',
-                'params': {
-                    'ef': 10
-                }
-            },
-            'IVF_HNSW': {
-                'metric_type': 'L2',
-                'params': {
-                    'nprobe': 10,
-                    'ef': 10
-                }
-            },
-            'ANNOY': {
-                'metric_type': 'L2',
-                'params': {
-                    'search_k': 10
-                }
-            },
-            'AUTOINDEX': {
-                'metric_type': 'L2',
-                'params': {}
-            },
+            "IVF_FLAT": {"metric_type": "L2", "params": {"nprobe": 10}},
+            "IVF_SQ8": {"metric_type": "L2", "params": {"nprobe": 10}},
+            "IVF_PQ": {"metric_type": "L2", "params": {"nprobe": 10}},
+            "HNSW": {"metric_type": "L2", "params": {"ef": 100}},
+            "RHNSW_FLAT": {"metric_type": "L2", "params": {"ef": 10}},
+            "RHNSW_SQ": {"metric_type": "L2", "params": {"ef": 10}},
+            "RHNSW_PQ": {"metric_type": "L2", "params": {"ef": 10}},
+            "IVF_HNSW": {"metric_type": "L2", "params": {"nprobe": 10, "ef": 10}},
+            "ANNOY": {"metric_type": "L2", "params": {"search_k": 10}},
+            "AUTOINDEX": {"metric_type": "L2", "params": {}},
         }
 
         self.embedding_func = embedding_function
@@ -214,7 +171,7 @@ class Milvus(MilvusLangchain):
                     using=self.alias,
                 )
         except Exception as e:
-            logger.error(f'milvus operating error={str(e)}')
+            logger.error(f"milvus operating error={str(e)}")
             self.close_connection(self.alias)
             raise e
         # If need to drop old, drop it
@@ -227,6 +184,7 @@ class Milvus(MilvusLangchain):
 
     def close_connection(self, using):
         from pymilvus import connections
+
         connections.remove_connection(using)
 
     def _create_connection_alias(self, connection_args: dict) -> str:
@@ -234,51 +192,54 @@ class Milvus(MilvusLangchain):
         from pymilvus import MilvusException, connections
 
         # Grab the connection arguments that are used for checking existing connection
-        host: str = connection_args.get('host', None)
-        port: Union[str, int] = connection_args.get('port', None)
-        address: str = connection_args.get('address', None)
-        uri: str = connection_args.get('uri', None)
-        user = connection_args.get('user', None)
+        host: str = connection_args.get("host", None)
+        port: Union[str, int] = connection_args.get("port", None)
+        address: str = connection_args.get("address", None)
+        uri: str = connection_args.get("uri", None)
+        user = connection_args.get("user", None)
 
         # Order of use is host/port, uri, address
         if host is not None and port is not None:
-            given_address = str(host) + ':' + str(port)
+            given_address = str(host) + ":" + str(port)
         elif uri is not None:
-            given_address = uri.split('https://')[1]
+            given_address = uri.split("https://")[1]
         elif address is not None:
             given_address = address
         else:
             given_address = None
-            logger.debug('Missing standard address type for reuse atttempt')
+            logger.debug("Missing standard address type for reuse atttempt")
 
         # User defaults to empty string when getting connection info
         if user is not None:
             tmp_user = user
         else:
-            tmp_user = ''
+            tmp_user = ""
 
         # If a valid address was given, then check if a connection exists
         if given_address is not None:
             for con in connections.list_connections():
                 addr = connections.get_connection_addr(con[0])
-                if (con[1] and ('address' in addr) and (addr['address'] == given_address)
-                        and ('user' in addr) and (addr['user'] == tmp_user)):
-                    logger.debug('Using previous connection: %s', con[0])
+                if (
+                    con[1]
+                    and ("address" in addr)
+                    and (addr["address"] == given_address)
+                    and ("user" in addr)
+                    and (addr["user"] == tmp_user)
+                ):
+                    logger.debug("Using previous connection: %s", con[0])
                     return con[0]
 
         # Generate a new connection if one doesn't exist
         alias = uuid4().hex
         try:
             connections.connect(alias=alias, **connection_args)
-            logger.debug('Created new connection using: %s', alias)
+            logger.debug("Created new connection using: %s", alias)
             return alias
         except MilvusException as e:
-            logger.error('Failed to create new connection using: %s', alias)
+            logger.error("Failed to create new connection using: %s", alias)
             raise e
 
-    def _init(self,
-              embeddings: Optional[list] = None,
-              metadatas: Optional[list[dict]] = None) -> None:
+    def _init(self, embeddings: Optional[list] = None, metadatas: Optional[list[dict]] = None) -> None:
         if embeddings is not None:
             self._create_collection(embeddings, metadatas)
         self._extract_fields()
@@ -311,25 +272,20 @@ class Milvus(MilvusLangchain):
                 # Datatype isn't compatible
                 if dtype == DataType.UNKNOWN or dtype == DataType.NONE:
                     logger.error(
-                        'Failure to create collection, unrecognized dtype for key: %s',
+                        "Failure to create collection, unrecognized dtype for key: %s",
                         key,
                     )
-                    raise ValueError(f'Unrecognized datatype for {key}.')
+                    raise ValueError(f"Unrecognized datatype for {key}.")
                 # Dataype is a string/varchar equivalent
                 elif dtype == DataType.VARCHAR:
-                    fields.append(
-                        FieldSchema(key,
-                                    DataType.VARCHAR,
-                                    max_length=65_535,
-                                    is_partition_key=is_partition))
+                    fields.append(FieldSchema(key, DataType.VARCHAR, max_length=65_535, is_partition_key=is_partition))
                 else:
                     fields.append(FieldSchema(key, dtype, is_partition_key=is_partition))
 
         # Create the text field
         fields.append(FieldSchema(self._text_field, DataType.VARCHAR, max_length=65_535))
         # Create the primary key field
-        fields.append(
-            FieldSchema(self._primary_field, DataType.INT64, is_primary=True, auto_id=True))
+        fields.append(FieldSchema(self._primary_field, DataType.INT64, is_primary=True, auto_id=True))
         # Create the vector field, supports binary or float vectors
         fields.append(FieldSchema(self._vector_field, infer_dtype_bydata(embeddings[0]), dim=dim))
 
@@ -348,7 +304,7 @@ class Milvus(MilvusLangchain):
                 using=self.alias,
             )
         except MilvusException as e:
-            logger.error('Failed to create collection: %s error: %s', self.collection_name, e)
+            logger.error("Failed to create collection: %s error: %s", self.collection_name, e)
             raise e
 
     def _extract_fields(self) -> None:
@@ -381,12 +337,9 @@ class Milvus(MilvusLangchain):
                 # If no index params, use a default HNSW based one
                 if self.index_params is None:
                     self.index_params = {
-                        'metric_type': 'L2',
-                        'index_type': 'HNSW',
-                        'params': {
-                            'M': 8,
-                            'efConstruction': 64
-                        },
+                        "metric_type": "L2",
+                        "index_type": "HNSW",
+                        "params": {"M": 8, "efConstruction": 64},
                     }
 
                 try:
@@ -400,9 +353,9 @@ class Milvus(MilvusLangchain):
                 except MilvusException:
                     # Use AUTOINDEX based index
                     self.index_params = {
-                        'metric_type': 'L2',
-                        'index_type': 'AUTOINDEX',
-                        'params': {},
+                        "metric_type": "L2",
+                        "index_type": "AUTOINDEX",
+                        "params": {},
                     }
                     self.col.create_index(
                         self._vector_field,
@@ -410,12 +363,12 @@ class Milvus(MilvusLangchain):
                         using=self.alias,
                     )
                 logger.debug(
-                    'Successfully created an index on collection: %s',
+                    "Successfully created an index on collection: %s",
                     self.collection_name,
                 )
 
             except MilvusException as e:
-                logger.error('Failed to create an index on collection: %s', self.collection_name)
+                logger.error("Failed to create an index on collection: %s", self.collection_name)
                 raise e
 
     def _create_search_params(self) -> None:
@@ -425,10 +378,10 @@ class Milvus(MilvusLangchain):
         if isinstance(self.col, Collection) and self.search_params is None:
             index = self._get_index()
             if index is not None:
-                index_type: str = index['index_param']['index_type']
-                metric_type: str = index['index_param']['metric_type']
+                index_type: str = index["index_param"]["index_type"]
+                metric_type: str = index["index_param"]["metric_type"]
                 self.search_params = self.default_search_params[index_type]
-                self.search_params['metric_type'] = metric_type
+                self.search_params["metric_type"] = metric_type
 
     def _load(self) -> None:
         """Load the collection if available."""
@@ -481,12 +434,12 @@ class Milvus(MilvusLangchain):
                 embeddings = [self.embedding_func.embed_query(x) for x in texts]
 
             if len(embeddings) == 0:
-                logger.debug('Nothing to insert, skipping.')
+                logger.debug("Nothing to insert, skipping.")
                 return []
         else:
             embeddings = [[0.0]] * len(texts)
             if len(embeddings) == 0:
-                logger.debug('Nothing to insert, skipping.')
+                logger.debug("Nothing to insert, skipping.")
                 return []
 
         # If the collection hasn't been initialized yet, perform all steps to do so
@@ -524,7 +477,7 @@ class Milvus(MilvusLangchain):
                 res = self.col.insert(insert_list, timeout=timeout, **kwargs)
                 pks.extend(res.primary_keys)
             except MilvusException as e:
-                logger.error('Failed to insert batch starting at entity: %s/%s', i, total_count)
+                logger.error("Failed to insert batch starting at entity: %s/%s", i, total_count)
                 raise e
         return pks
 
@@ -556,14 +509,9 @@ class Milvus(MilvusLangchain):
             # pm need to control
             return []
         if self.col is None:
-            logger.debug('No existing collection to search.')
+            logger.debug("No existing collection to search.")
             return []
-        res = self.similarity_search_with_score(query=query,
-                                                k=k,
-                                                param=param,
-                                                expr=expr,
-                                                timeout=timeout,
-                                                **kwargs)
+        res = self.similarity_search_with_score(query=query, k=k, param=param, expr=expr, timeout=timeout, **kwargs)
         return [doc for doc, _ in res]
 
     def similarity_search_by_vector(
@@ -594,14 +542,11 @@ class Milvus(MilvusLangchain):
             # pm need to control
             return []
         if self.col is None:
-            logger.debug('No existing collection to search.')
+            logger.debug("No existing collection to search.")
             return []
-        res = self.similarity_search_with_score_by_vector(embedding=embedding,
-                                                          k=k,
-                                                          param=param,
-                                                          expr=expr,
-                                                          timeout=timeout,
-                                                          **kwargs)
+        res = self.similarity_search_with_score_by_vector(
+            embedding=embedding, k=k, param=param, expr=expr, timeout=timeout, **kwargs
+        )
         return [doc for doc, _ in res]
 
     def similarity_search_with_score(
@@ -636,18 +581,15 @@ class Milvus(MilvusLangchain):
             # pm need to control
             return []
         if self.col is None:
-            logger.debug('No existing collection to search.')
+            logger.debug("No existing collection to search.")
             return []
 
         # Embed the query text.
         embedding = self.embedding_func.embed_query(query)
 
-        res = self.similarity_search_with_score_by_vector(embedding=embedding,
-                                                          k=k,
-                                                          param=param,
-                                                          expr=expr,
-                                                          timeout=timeout,
-                                                          **kwargs)
+        res = self.similarity_search_with_score_by_vector(
+            embedding=embedding, k=k, param=param, expr=expr, timeout=timeout, **kwargs
+        )
         return res
 
     def similarity_search_with_score_by_vector(
@@ -682,7 +624,7 @@ class Milvus(MilvusLangchain):
             # pm need to control
             return []
         if self.col is None:
-            logger.debug('No existing collection to search.')
+            logger.debug("No existing collection to search.")
             return []
 
         if param is None:
@@ -692,7 +634,7 @@ class Milvus(MilvusLangchain):
         output_fields = self.fields[:]
         output_fields.remove(self._vector_field)
         # partition for multi-tenancy
-        if 'partition_key' in kwargs:
+        if "partition_key" in kwargs:
             # add parttion
             if expr:
                 expr = f"{expr} and {self._partition_field}==\"{kwargs['partition_key']}\""
@@ -757,7 +699,7 @@ class Milvus(MilvusLangchain):
             # pm need to control
             return []
         if self.col is None:
-            logger.debug('No existing collection to search.')
+            logger.debug("No existing collection to search.")
             return []
 
         embedding = self.embedding_func.embed_query(query)
@@ -809,7 +751,7 @@ class Milvus(MilvusLangchain):
             # pm need to control
             return []
         if self.col is None:
-            logger.debug('No existing collection to search.')
+            logger.debug("No existing collection to search.")
             return []
 
         if param is None:
@@ -842,7 +784,7 @@ class Milvus(MilvusLangchain):
             ids.append(result.id)
 
         vectors = self.col.query(
-            expr=f'{self._primary_field} in {ids}',
+            expr=f"{self._primary_field} in {ids}",
             output_fields=[self._primary_field, self._vector_field],
             timeout=timeout,
         )
@@ -852,10 +794,9 @@ class Milvus(MilvusLangchain):
         ordered_result_embeddings = [vectors[x] for x in ids]
 
         # Get the new order of results.
-        new_ordering = maximal_marginal_relevance(np.array(embedding),
-                                                  ordered_result_embeddings,
-                                                  k=k,
-                                                  lambda_mult=lambda_mult)
+        new_ordering = maximal_marginal_relevance(
+            np.array(embedding), ordered_result_embeddings, k=k, lambda_mult=lambda_mult
+        )
 
         # Reorder the values and return.
         ret = []
@@ -873,9 +814,9 @@ class Milvus(MilvusLangchain):
         texts: List[str],
         embedding: Embeddings,
         metadatas: Optional[List[dict]] = None,
-        collection_name: str = 'LangChainCollection',
+        collection_name: str = "LangChainCollection",
         connection_args: dict[str, Any] = DEFAULT_MILVUS_CONNECTION,
-        consistency_level: str = 'Session',
+        consistency_level: str = "Session",
         index_params: Optional[dict] = None,
         search_params: Optional[dict] = None,
         drop_old: bool = False,
@@ -945,3 +886,620 @@ class Milvus(MilvusLangchain):
             ret.append(doc)
 
         return ret
+
+
+class HybridSearchMilvus(Milvus):
+    def __init__(
+        self,
+        embedding_function: Embeddings,
+        collection_name: str = "LangChainCollection",
+        connection_args: Optional[dict[str, Any]] = None,
+        consistency_level: str = "Session",
+        drop_old: Optional[bool] = False,
+        *,
+        primary_field: str = "pk",
+        text_field: str = "text",
+        dense_vector_field: str = "dense_vector",
+        sparse_vector_field: str = "sparse_vector",
+        partition_field: str = "knowledge_id",
+    ):
+        super().__init__(
+            embedding_function,
+            collection_name=collection_name,
+            connection_args=connection_args,
+            consistency_level=consistency_level,
+            index_params=None,
+            search_params=None,
+            drop_old=drop_old,
+            primary_field=primary_field,
+            text_field=text_field,
+            vector_field=dense_vector_field,
+            partition_field=partition_field,
+        )
+
+        self._sparse_vector_field = sparse_vector_field
+        self._dense_index_params = {"index_type": "FLAT", "metric_type": "IP"}
+        self._sparse_index_params = {"index_type": "SPARSE_INVERTED_INDEX", "metric_type": "IP"}
+        self._dense_search_params = None
+        self._sparse_search_params = None
+
+    def _create_collection(self, embeddings: list, metadatas: Optional[list[dict]] = None) -> None:
+        from pymilvus import (
+            Collection,
+            CollectionSchema,
+            DataType,
+            FieldSchema,
+            MilvusException,
+        )
+        from pymilvus.orm.types import infer_dtype_bydata
+
+        # Determine embedding dim
+        dense_dim = len(embeddings[0])
+        fields = []
+        # Determine metadata schema
+        if metadatas:
+            # Create FieldSchema for each entry in metadata.
+            for key, value in metadatas[0].items():
+                # Infer the corresponding datatype of the metadata
+                dtype = infer_dtype_bydata(value)
+                is_partition = False
+                if key == self._partition_field:
+                    is_partition = True
+                # Datatype isn't compatible
+                if dtype == DataType.UNKNOWN or dtype == DataType.NONE:
+                    logger.error(
+                        "Failure to create collection, unrecognized dtype for key: %s",
+                        key,
+                    )
+                    raise ValueError(f"Unrecognized datatype for {key}.")
+                # Dataype is a string/varchar equivalent
+                elif dtype == DataType.VARCHAR:
+                    fields.append(FieldSchema(key, DataType.VARCHAR, max_length=65_535, is_partition_key=is_partition))
+                else:
+                    fields.append(FieldSchema(key, dtype, is_partition_key=is_partition))
+
+        # Create the primary key field
+        fields.append(FieldSchema(self._primary_field, DataType.INT64, is_primary=True, auto_id=True))
+        # Create the text field
+        fields.append(FieldSchema(self._text_field, DataType.VARCHAR, max_length=65_535))
+        # Create the vector field
+        fields.append(FieldSchema(name=self._sparse_vector_field, dtype=DataType.SPARSE_FLOAT_VECTOR))
+        fields.append(FieldSchema(name=self._vector_field, dtype=DataType.FLOAT_VECTOR, dim=dense_dim))
+
+        if self._partition_field in [f.name for f in fields]:
+            # Create the schema for the collection
+            schema = CollectionSchema(fields, partition_key_field=self._partition_field)
+        else:
+            schema = CollectionSchema(fields)
+
+        # Create the collection
+        try:
+            self.col = Collection(
+                name=self.collection_name,
+                schema=schema,
+                consistency_level=self.consistency_level,
+                using=self.alias,
+            )
+        except MilvusException as e:
+            logger.error("Failed to create collection: %s error: %s", self.collection_name, e)
+            raise e
+
+    def _create_index(self) -> None:
+        """Create a index on the collection"""
+        from pymilvus import Collection, MilvusException
+
+        if isinstance(self.col, Collection) and self._get_index() is None:
+            try:
+                self.col.create_index(
+                    self._vector_field,
+                    index_params=self._dense_index_params,
+                    using=self.alias,
+                )
+                self.col.create_index(
+                    self._sparse_vector_field,
+                    index_params=self._sparse_index_params,
+                    using=self.alias,
+                )
+
+                logger.debug(
+                    "Successfully created an index on collection: %s",
+                    self.collection_name,
+                )
+
+            except MilvusException as e:
+                logger.error("Failed to create an index on collection: %s", self.collection_name)
+                raise e
+
+    def _create_search_params(self) -> None:
+        """Generate search params based on the current index type"""
+        from pymilvus import Collection
+
+        if isinstance(self.col, Collection) and self._dense_index_params is None:
+            self._sparse_search_params = {"metric_type": "IP"}
+            self._dense_search_params = {"metric_type": "IP"}
+
+    def _lexical_weights_to_sparse(lexical_weights: List[Dict[str, float]], sparse_dim: int) -> List[csr_array]:
+        sparse_vectors = []
+        for weights in lexical_weights:
+            indices = [int(k) for k in weights]
+            values = list(weights.values())
+            row_indices = [0] * len(indices)
+            csr = csr_array((values, (row_indices, indices)), shape=(1, sparse_dim))
+            sparse_vectors.append(csr)
+
+        sparse_vectors = vstack(sparse_vectors).tocsr()
+        return sparse_vectors
+
+    def _extract_dense_sparse_vectors(
+        self, embeddings: List[Dict[str, Any]]
+    ) -> Tuple[List[List[float]], List[csr_array]]:
+        dense_vectors = [res["dense"] for res in embeddings]
+        lexical_weights = [res["lexical_weights"] for res in embeddings]
+        sparse_dim = embeddings[0]["sparse_dim"]
+
+        sparse_vectors = self._lexical_weights_to_sparse(lexical_weights, sparse_dim)
+
+        return dense_vectors, sparse_vectors
+
+    def add_texts(
+        self,
+        texts: Iterable[str],
+        metadatas: Optional[List[dict]] = None,
+        timeout: Optional[int] = None,
+        batch_size: int = 1000,
+        **kwargs: Any,
+    ) -> List[str]:
+        """Insert text data into Milvus.
+
+        Inserting data when the collection has not be made yet will result
+        in creating a new Collection. The data of the first entity decides
+        the schema of the new collection, the dim is extracted from the first
+        embedding and the columns are decided by the first metadata dict.
+        Metada keys will need to be present for all inserted values. At
+        the moment there is no None equivalent in Milvus.
+
+        Args:
+            texts (Iterable[str]): The texts to embed, it is assumed
+                that they all fit in memory.
+            metadatas (Optional[List[dict]]): Metadata dicts attached to each of
+                the texts. Defaults to None.
+            timeout (Optional[int]): Timeout for each batch insert. Defaults
+                to None.
+            batch_size (int, optional): Batch size to use for insertion.
+                Defaults to 1000.
+
+        Raises:
+            MilvusException: Failure to add texts
+
+        Returns:
+            List[str]: The resulting keys for each inserted element.
+        """
+        from pymilvus import Collection, MilvusException
+
+        texts = list(texts)
+        if not texts:
+            logger.debug("Nothing to insert, skipping.")
+            return []
+
+        try:
+            embeddings = self.embedding_func.embed_documents(texts)
+        except NotImplementedError:
+            embeddings = [self.embedding_func.embed_query(x) for x in texts]
+
+        if len(embeddings) == 0:
+            logger.debug("Nothing to insert, skipping.")
+            return []
+
+        dense_vectors, sparse_vectors = self._extract_dense_sparse_vectors(embeddings)
+
+        # If the collection hasn't been initialized yet, perform all steps to do so
+        if not isinstance(self.col, Collection):
+            self._init(dense_vectors, metadatas)
+
+        # Dict to hold all insert columns
+        insert_dict: dict[str, list] = {
+            self._text_field: texts,
+            self._vector_field: dense_vectors,
+            self._sparse_vector_field: sparse_vectors,
+        }
+
+        # Collect the metadata into the insert dict.
+        if metadatas is not None:
+            for d in metadatas:
+                for key, value in d.items():
+                    if key in self.fields:
+                        insert_dict.setdefault(key, []).append(value)
+
+        # Total insert count
+        vectors: list = insert_dict[self._vector_field]
+        total_count = len(vectors)
+
+        pks: list[str] = []
+
+        assert isinstance(self.col, Collection)
+        for i in range(0, total_count, batch_size):
+            # Grab end index
+            end = min(i + batch_size, total_count)
+            # Convert dict to list of lists batch for insertion
+            insert_list = [insert_dict[x][i:end] for x in self.fields if x in insert_dict]
+            # Insert into the collection.
+            try:
+                res: Collection
+                res = self.col.insert(insert_list, timeout=timeout, **kwargs)
+                pks.extend(res.primary_keys)
+            except MilvusException as e:
+                logger.error("Failed to insert batch starting at entity: %s/%s", i, total_count)
+                raise e
+        return pks
+
+    def similarity_search(
+        self,
+        query: str,
+        k: int = 4,
+        expr: Optional[str] = None,
+        timeout: Optional[int] = None,
+        **kwargs: Any,
+    ) -> List[Document]:
+        """Perform a similarity search against the query string.
+
+        Args:
+            query (str): The text to search.
+            k (int, optional): How many results to return. Defaults to 4.
+            expr (str, optional): Filtering expression. Defaults to None.
+            timeout (int, optional): How long to wait before timeout error.
+                Defaults to None.
+            kwargs: Collection.search() keyword arguments.
+
+        Returns:
+            List[Document]: Document results for search.
+        """
+        if k == 0:
+            # pm need to control
+            return []
+        if self.col is None:
+            logger.debug("No existing collection to search.")
+            return []
+
+        res = self.similarity_search_with_score(query=query, k=k, expr=expr, timeout=timeout, **kwargs)
+        return [doc for doc, _ in res]
+
+    def similarity_search_by_vector(
+        self,
+        embedding: List[float],
+        k: int = 4,
+        expr: Optional[str] = None,
+        timeout: Optional[int] = None,
+        **kwargs: Any,
+    ) -> List[Document]:
+        """Perform a similarity search against the query string.
+
+        Args:
+            embedding (List[float]): The embedding vector to search.
+            k (int, optional): How many results to return. Defaults to 4.
+            expr (str, optional): Filtering expression. Defaults to None.
+            timeout (int, optional): How long to wait before timeout error.
+                Defaults to None.
+            kwargs: Collection.search() keyword arguments.
+
+        Returns:
+            List[Document]: Document results for search.
+        """
+        if k == 0:
+            # pm need to control
+            return []
+        if self.col is None:
+            logger.debug("No existing collection to search.")
+            return []
+        res = self.similarity_search_with_score_by_vector(
+            embedding=embedding, k=k, expr=expr, timeout=timeout, **kwargs
+        )
+        return [doc for doc, _ in res]
+
+    def similarity_search_with_score(
+        self,
+        query: str,
+        k: int = 4,
+        expr: Optional[str] = None,
+        timeout: Optional[int] = None,
+        **kwargs: Any,
+    ) -> List[Tuple[Document, float]]:
+        """Perform a search on a query string and return results with score.
+
+        For more information about the search parameters, take a look at the pymilvus
+        documentation found here:
+        https://milvus.io/api-reference/pymilvus/v2.2.6/Collection/search().md
+
+        Args:
+            query (str): The text being searched.
+            k (int, optional): The amount of results to return. Defaults to 4.
+            param (dict): The search params for the specified index.
+                Defaults to None.
+            expr (str, optional): Filtering expression. Defaults to None.
+            timeout (int, optional): How long to wait before timeout error.
+                Defaults to None.
+            kwargs: Collection.search() keyword arguments.
+
+        Returns:
+            List[float], List[Tuple[Document, any, any]]:
+        """
+        if k == 0:
+            # pm need to control
+            return []
+        if self.col is None:
+            logger.debug("No existing collection to search.")
+            return []
+
+        # Embed the query text.
+        embedding = self.embedding_func.embed_query(query)
+
+        res = self.similarity_search_with_score_by_vector(
+            embedding=embedding, k=k, expr=expr, timeout=timeout, **kwargs
+        )
+        return res
+
+    def similarity_search_with_score_by_vector(
+        self,
+        embedding: Dict[str, Any],
+        k: int = 4,
+        expr: Optional[str] = None,
+        timeout: Optional[int] = None,
+        **kwargs: Any,
+    ) -> List[Tuple[Document, float]]:
+        """Perform a search on a query string and return results with score.
+
+        For more information about the search parameters, take a look at the pymilvus
+        documentation found here:
+        https://milvus.io/api-reference/pymilvus/v2.2.6/Collection/search().md
+
+        Args:
+            embedding (Dict[str, Any]): The embedding vector being searched.
+            k (int, optional): The amount of results to return. Defaults to 4.
+            expr (str, optional): Filtering expression. Defaults to None.
+            timeout (int, optional): How long to wait before timeout error.
+                Defaults to None.
+            kwargs: Collection.search() keyword arguments.
+
+        Returns:
+            List[Tuple[Document, float]]: Result doc and score.
+        """
+        from pymilvus import AnnSearchRequest, RRFRanker
+
+        if k == 0:
+            # pm need to control
+            return []
+        if self.col is None:
+            logger.debug("No existing collection to search.")
+            return []
+
+        # Determine result metadata fields.
+        output_fields = self.fields[:]
+        output_fields.remove(self._vector_field)
+        output_fields.remove(self._sparse_vector_field)
+
+        # partition for multi-tenancy
+        if "partition_key" in kwargs:
+            # add parttion
+            if expr:
+                expr = f"{expr} and {self._partition_field}==\"{kwargs['partition_key']}\""
+            else:
+                expr = f"{self._partition_field}==\"{kwargs['partition_key']}\""
+
+        # Perform the search.
+        dense_vectors, sparse_vectors = self._extract_dense_sparse_vectors([embedding])
+        sparse_req = AnnSearchRequest(sparse_vectors, self._sparse_vector_field, self._sparse_search_params, limit=k)
+        dense_req = AnnSearchRequest(dense_vectors, self._vector_field, self._dense_search_params, limit=k)
+
+        res = self.col.hybrid_search(
+            [sparse_req, dense_req],
+            rerank=RRFRanker(),
+            limit=k,
+            expr=expr,
+            output_fields=output_fields,
+            timeout=timeout,
+            **kwargs,
+        )
+
+        # Organize results.
+        ret = []
+        for result in res:
+            meta = {x: result.entity.get(x) for x in output_fields}
+            doc = Document(page_content=meta.pop(self._text_field), metadata=meta)
+            pair = (doc, result.score)
+            ret.append(pair)
+
+        return ret
+
+    def max_marginal_relevance_search(
+        self,
+        query: str,
+        k: int = 4,
+        fetch_k: int = 20,
+        lambda_mult: float = 0.5,
+        param: Optional[dict] = None,
+        expr: Optional[str] = None,
+        timeout: Optional[int] = None,
+        **kwargs: Any,
+    ) -> List[Document]:
+        """Perform a search and return results that are reordered by MMR.
+
+        Args:
+            query (str): The text being searched.
+            k (int, optional): How many results to give. Defaults to 4.
+            fetch_k (int, optional): Total results to select k from.
+                Defaults to 20.
+            lambda_mult: Number between 0 and 1 that determines the degree
+                        of diversity among the results with 0 corresponding
+                        to maximum diversity and 1 to minimum diversity.
+                        Defaults to 0.5
+            param (dict, optional): The search params for the specified index.
+                Defaults to None.
+            expr (str, optional): Filtering expression. Defaults to None.
+            timeout (int, optional): How long to wait before timeout error.
+                Defaults to None.
+            kwargs: Collection.search() keyword arguments.
+
+
+        Returns:
+            List[Document]: Document results for search.
+        """
+        if k == 0:
+            # pm need to control
+            return []
+        if self.col is None:
+            logger.debug("No existing collection to search.")
+            return []
+
+        embedding = self.embedding_func.embed_query(query)
+
+        return self.max_marginal_relevance_search_by_vector(
+            embedding=embedding,
+            k=k,
+            fetch_k=fetch_k,
+            lambda_mult=lambda_mult,
+            param=param,
+            expr=expr,
+            timeout=timeout,
+            **kwargs,
+        )
+
+    def max_marginal_relevance_search_by_vector(
+        self,
+        embedding: Dict[str, Any],
+        k: int = 4,
+        fetch_k: int = 20,
+        lambda_mult: float = 0.5,
+        param: Optional[dict] = None,
+        expr: Optional[str] = None,
+        timeout: Optional[int] = None,
+        **kwargs: Any,
+    ) -> List[Document]:
+        """Perform a search and return results that are reordered by MMR.
+
+        Args:
+            embedding (Dict[str, Any]): The embedding vector being searched.
+            k (int, optional): How many results to give. Defaults to 4.
+            fetch_k (int, optional): Total results to select k from.
+                Defaults to 20.
+            lambda_mult: Number between 0 and 1 that determines the degree
+                        of diversity among the results with 0 corresponding
+                        to maximum diversity and 1 to minimum diversity.
+                        Defaults to 0.5
+            param (dict, optional): The search params for the specified index.
+                Defaults to None.
+            expr (str, optional): Filtering expression. Defaults to None.
+            timeout (int, optional): How long to wait before timeout error.
+                Defaults to None.
+            kwargs: Collection.search() keyword arguments.
+
+        Returns:
+            List[Document]: Document results for search.
+        """
+        from pymilvus import AnnSearchRequest, RRFRanker
+
+        if k == 0:
+            # pm need to control
+            return []
+        if self.col is None:
+            logger.debug("No existing collection to search.")
+            return []
+
+        if param is None:
+            param = self.search_params
+
+        # Determine result metadata fields.
+        output_fields = self.fields[:]
+        output_fields.remove(self._vector_field)
+        output_fields.remove(self._sparse_vector_field)
+
+        # Perform the search.
+        dense_vectors, sparse_vectors = self._extract_dense_sparse_vectors([embedding])
+        sparse_req = AnnSearchRequest(sparse_vectors, self._sparse_vector_field, self._sparse_search_params, limit=k)
+        dense_req = AnnSearchRequest(dense_vectors, self._vector_field, self._dense_search_params, limit=k)
+
+        res = self.col.hybrid_search(
+            [sparse_req, dense_req],
+            rerank=RRFRanker(),
+            limit=fetch_k,
+            expr=expr,
+            output_fields=output_fields,
+            timeout=timeout,
+            **kwargs,
+        )
+        # Organize results.
+        ids = []
+        documents = []
+        scores = []
+        for result in res[0]:
+            meta = {x: result.entity.get(x) for x in output_fields}
+            doc = Document(page_content=meta.pop(self._text_field), metadata=meta)
+            documents.append(doc)
+            scores.append(result.score)
+            ids.append(result.id)
+
+        vectors = self.col.query(
+            expr=f"{self._primary_field} in {ids}",
+            output_fields=[self._primary_field, self._vector_field],
+            timeout=timeout,
+        )
+        # Reorganize the results from query to match search order.
+        vectors = {x[self._primary_field]: x[self._vector_field] for x in vectors}
+
+        ordered_result_embeddings = [vectors[x] for x in ids]
+
+        # Get the new order of results.
+        dense_embedding = embedding["dense"]
+        new_ordering = maximal_marginal_relevance(
+            np.array(dense_embedding), ordered_result_embeddings, k=k, lambda_mult=lambda_mult
+        )
+
+        # Reorder the values and return.
+        ret = []
+        for x in new_ordering:
+            # Function can return -1 index
+            if x == -1:
+                break
+            else:
+                ret.append(documents[x])
+        return ret
+
+    @classmethod
+    def from_texts(
+        cls,
+        texts: List[str],
+        embedding: Embeddings,
+        metadatas: Optional[List[dict]] = None,
+        collection_name: str = "LangChainCollection",
+        connection_args: dict[str, Any] = DEFAULT_MILVUS_CONNECTION,
+        consistency_level: str = "Session",
+        drop_old: bool = False,
+        **kwargs: Any,
+    ) -> Milvus:
+        """Create a Milvus collection, indexes it with HNSW, and insert data.
+
+        Args:
+            texts (List[str]): Text data.
+            embedding (Embeddings): Embedding function.
+            metadatas (Optional[List[dict]]): Metadata for each text if it exists.
+                Defaults to None.
+            collection_name (str, optional): Collection name to use. Defaults to
+                "LangChainCollection".
+            connection_args (dict[str, Any], optional): Connection args to use. Defaults
+                to DEFAULT_MILVUS_CONNECTION.
+            consistency_level (str, optional): Which consistency level to use. Defaults
+                to "Session".
+            drop_old (Optional[bool], optional): Whether to drop the collection with
+                that name if it exists. Defaults to False.
+
+        Returns:
+            Milvus: Milvus Vector Store
+        """
+        vector_db = cls(
+            embedding_function=embedding,
+            collection_name=collection_name,
+            connection_args=connection_args,
+            consistency_level=consistency_level,
+            drop_old=drop_old,
+            **kwargs,
+        )
+        vector_db.add_texts(texts=texts, metadatas=metadatas)
+        return vector_db
